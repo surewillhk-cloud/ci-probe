@@ -1,0 +1,34 @@
+name: pgprobe
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq postgresql-client >/dev/null 2>&1; psql --version
+      - name: probe
+        run: |
+          set +e
+          exec > /tmp/result.txt 2>&1
+          echo "== date =="; date -u
+          echo "== egress =="; curl -s -m 10 https://api.ipify.org; echo
+          echo "== tcp 43.133.171.137:30455 =="; timeout 20 bash -c 'cat </dev/null >/dev/tcp/43.133.171.137/30455' && echo PG1_OPEN || echo PG1_FAIL
+          echo "== tcp 43.156.186.73:5433 =="; timeout 15 bash -c 'cat </dev/null >/dev/tcp/43.156.186.73/5433' && echo PG3_OPEN || echo PG3_FAIL
+          echo "== tcp 47.74.34.70:5432 =="; timeout 15 bash -c 'cat </dev/null >/dev/tcp/47.74.34.70/5432' && echo GG_OPEN || echo GG_FAIL
+          echo "== PG1 version =="
+          PGPASSWORD='fed1CLU4kJ85b6i7glO39K2XtDmosZw0' psql "host=43.133.171.137 port=30455 user=root dbname=zeabur connect_timeout=25 sslmode=prefer" -Atc "select version(),current_database(),current_user" 2>&1 | head -5
+          echo "== PG1 tables =="
+          PGPASSWORD='fed1CLU4kJ85b6i7glO39K2XtDmosZw0' psql "host=43.133.171.137 port=30455 user=root dbname=zeabur connect_timeout=25 sslmode=prefer" -Atc "select table_schema||'.'||table_name from information_schema.tables where table_schema not in ('pg_catalog','information_schema') order by 1" 2>&1 | head -100
+          echo "== PG1 size/counts =="
+          PGPASSWORD='fed1CLU4kJ85b6i7glO39K2XtDmosZw0' psql "host=43.133.171.137 port=30455 user=root dbname=zeabur connect_timeout=25 sslmode=prefer" -Atc "select relname,n_live_tup from pg_stat_user_tables order by n_live_tup desc limit 40" 2>&1
+          cp /tmp/result.txt result.txt
+          wc -c result.txt
+      - name: commit
+        run: |
+          git config user.email ci@local; git config user.name ci
+          git add result.txt; git commit -m "probe result" || true; git push || true
+          cat result.txt
