@@ -1,5 +1,8 @@
 name: netprobe
 on:
+  push:
+    paths:
+      - 'probes/**'
   workflow_dispatch:
 permissions:
   contents: write
